@@ -7,6 +7,14 @@ project(bb-lib C)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(BLUEZ REQUIRED bluez)
+
+include_directories(${BLUEZ_INCLUDE_DIRS})
+
+# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
+
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin") 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib") 
 
@@ -30,8 +38,17 @@ add_library(
 target_include_directories(bb-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/bb-lib/include)
 
 add_executable(tests tests.c)
+add_executable(central central.c)
+add_executable(peripheral peripheral.c)
 
-target_link_libraries(tests PRIVATE bb-lib)
+
+target_link_libraries(tests bb-lib)
+target_link_libraries(central bb-lib)
+target_link_libraries(peripheral bb-lib)
+target_link_libraries(central ${BLUEZ_LIBRARIES})
+target_link_libraries(peripheral ${BLUEZ_LIBRARIES})
+
+
 
 add_custom_target(run_tests ALL
     COMMAND $<TARGET_FILE:tests>

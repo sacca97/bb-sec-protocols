@@ -14,7 +14,8 @@
 #define BB_ROLE_CENTRAL 0
 #define BB_ROLE_PERIPHERAL 1
 
-struct bbstate_s {
+struct bbstate_s
+{
     uint8_t static_public_key[KEY_LEN];
     uint8_t static_private_key[KEY_LEN];
 
@@ -34,7 +35,8 @@ struct bbstate_s {
 
 typedef struct bbstate_s bbstate;
 
-struct bb_session_start_req {
+struct bb_session_start_req
+{
     uint8_t type;
     uint8_t reserved[3];
     uint8_t ephemeral[KEY_LEN];
@@ -42,15 +44,26 @@ struct bb_session_start_req {
     uint8_t auth[TAG_LEN];
 } __attribute__((__packed__));
 
-void
-bbstate_init(bbstate* st, int role, uint8_t* s_pub, uint8_t* s_priv,
-             uint8_t* rs, uint8_t* psk);
+struct bb_pair_req
+{
+    uint8_t type;
+    uint8_t iocap;
+    uint8_t oob;
+    uint8_t reserved[4];
+    uint8_t ephemeral[KEY_LEN];
+    uint64_t counter;
+    uint8_t auth[TAG_LEN];
+} __attribute__((__packed__));
 
-void
-bb_session_start_req(bbstate* st, uint8_t* msgbuf);
+void bbstate_init(bbstate *st, int role, uint8_t *s_pub, uint8_t *s_priv,
+                  uint8_t *rs, uint8_t *psk);
 
-void
-bb_session_start_rsp(bbstate* st, uint8_t* msgbuf);
+void bb_session_start_req(bbstate *st, uint8_t *msgbuf);
 
-void
-bb_session_start_rx(bbstate* st, uint8_t* msgbuf);
+void bb_session_start_rsp(bbstate *st, uint8_t *msgbuf);
+
+void bb_session_start_rx(bbstate *st, uint8_t *msgbuf);
+
+void bb_pair_rsp_rx(bbstate *st, uint8_t *msgbuf);
+void bb_pair_req_rx(bbstate *st, uint8_t *msgbuf);
+void bb_pair_req_build(bbstate *st, uint8_t *msgbuf);

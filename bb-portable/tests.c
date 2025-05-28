@@ -13,18 +13,17 @@ static uint8_t priv_c[32];
 static uint8_t pub_p[32];
 static uint8_t priv_p[32];
 
-void
-print_buf(void* buf, size_t buf_len)
+void print_buf(void *buf, size_t buf_len)
 {
-    uint8_t* bufr = (uint8_t*)buf;
-    for (int i = 0; i < buf_len; i++) {
+    uint8_t *bufr = (uint8_t *)buf;
+    for (int i = 0; i < buf_len; i++)
+    {
         printf("%02x", bufr[i]);
     }
     printf("\n");
 }
 
-int
-main(int argc, char** argv)
+int main(int argc, char **argv)
 {
 
     uint8_t buffer[128];
@@ -32,7 +31,10 @@ main(int argc, char** argv)
     uint8_t shared_c[32];
     uint8_t shared_p[32];
 
-    for (int i = 0; i < 100; i++) {
+    // BB-session
+
+    for (int i = 0; i < 10; i++)
+    {
         ecdh_keygen(pub_c, priv_c);
         ecdh_keygen(pub_p, priv_p);
 
@@ -55,4 +57,24 @@ main(int argc, char** argv)
         memset(&central, 0, sizeof(central));
         memset(&peripheral, 0, sizeof(peripheral));
     }
+
+    ecdh_keygen(pub_c, priv_c);
+    ecdh_keygen(pub_p, priv_p);
+
+    bbstate_init(&central, BB_ROLE_CENTRAL, pub_c, priv_c, NULL, NULL);
+    bbstate_init(&peripheral, BB_ROLE_PERIPHERAL, pub_p, priv_p, NULL,
+                 NULL);
+
+    // print_buf(central.hc, 32);
+    // print_buf(peripheral.hc, 32);
+
+    // assert(memcmp(central.hc, peripheral.hc, sizeof(central.hc)) == 0);
+
+    bb_pair_req_build(&central, buffer);
+
+    bb_pair_req_rx(&peripheral, buffer);
+
+    bb_pair_rsp_rx(&central, buffer);
+
+    // OK
 }
