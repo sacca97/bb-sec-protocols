@@ -1,6 +1,6 @@
-# bb-protocols
+# BlueBrothers-protocols
 
-Implementations of the BlueBrother protocols.
+Implementations of the BlueBrothers protocols.
 
 ## BB-Portable
 
