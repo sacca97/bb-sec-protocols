@@ -48,3 +48,6 @@ ecdh_make_shared(uint8_t* shared, uint8_t* public, uint8_t* private);
 
 void
 crypto_zero(void* dest, size_t size);
+
+void
+random_buf(uint8_t* buf, size_t buf_len);

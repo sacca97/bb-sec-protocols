@@ -78,9 +78,11 @@ main(int argc, char** argv)
 
     bb_pair_pubkey_rx(&peripheral, buffer);
 
+    bb_pair_pubkey_build(&peripheral, buffer);
+
+    bb_pair_pubkey_rx(&central, buffer);
+
     assert(memcmp(central.hc, peripheral.hc, sizeof(central.hc)) == 0);
 
-    assert(memcmp(central.static_public_key, peripheral.rs, KEY_LEN) == 0);
-
-    // OK
+    assert(memcmp(central.key, peripheral.key, KEY_LEN) == 0);
 }

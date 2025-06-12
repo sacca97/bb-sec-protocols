@@ -215,10 +215,16 @@ bb_pair_pubkey_build(bbstate* st, uint8_t* msgbuf)
 {
     struct bb_pair_pubkey* msg = (struct bb_pair_pubkey*)msgbuf;
     msg->counter = st->counter;
+
     aead_encrypt(msg->key, st->key, st->counter, st->hc, 32,
                  st->static_public_key, KEY_LEN);
-    print_buf(st->static_public_key, KEY_LEN);
     mixhash(st, &msg->type, sizeof(*msg));
+
+    if (st->role == BB_ROLE_PERIPHERAL) {
+        uint8_t shared[KEY_LEN];
+        ecdh_make_shared(shared, st->rs, st->static_private_key);
+        hkdf(st->key, NULL, NULL, st->key, shared, KEY_LEN);
+    }
 }
 
 void
@@ -229,7 +235,11 @@ bb_pair_pubkey_rx(bbstate* st, uint8_t* msgbuf)
     aead_decrypt(st->rs, st->key, msg->counter, st->hc, 32, msg->key,
                  KEY_LEN + TAG_LEN);
 
-    print_buf(st->rs, KEY_LEN);
-
     mixhash(st, &msg->type, sizeof(*msg));
+
+    if (st->role == BB_ROLE_CENTRAL) {
+        uint8_t shared[KEY_LEN];
+        ecdh_make_shared(shared, st->rs, st->static_private_key);
+        hkdf(st->key, NULL, NULL, st->key, shared, KEY_LEN);
+    }
 }

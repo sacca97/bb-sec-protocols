@@ -67,33 +67,36 @@ void
 hkdf(uint8_t* tau1, uint8_t* tau2, uint8_t* tau3, const uint8_t* key,
      const uint8_t* data, size_t data_len)
 {
-    uint8_t tau0[HASH_LEN];
-    uint8_t output[HASH_LEN + 1];
+    uint8_t prk[HASH_LEN];
+    uint8_t prev[HASH_LEN];
+    uint8_t tmp[HASH_LEN + 1];
+    uint8_t info[] = "bluebrothersprotocols";
 
-    // tau0 = Hmac(key, input)
-    hmac(tau0, key, HASH_LEN, data, data_len);
-    // tau1 := Hmac(tau0, 0x1)
-    output[0] = 1;
-    hmac(output, tau0, HASH_LEN, output, 1);
-    memcpy(tau1, output, HASH_LEN);
+    hmac(prk, key, KEY_LEN, data, data_len);
 
-    if (tau2) {
-        // tau2 := Hmac(tau0, tau1 || 0x2)
-        output[HASH_LEN] = 2;
-        hmac(output, tau0, HASH_LEN, output, HASH_LEN + 1);
-        memcpy(tau2, output, HASH_LEN);
-    }
+    memcpy(tmp, info, sizeof(info));
+    tmp[sizeof(info)] = 1;
 
-    if (tau3) {
-        // tau3 := Hmac(tau0, tau2 || 0x3)
-        output[HASH_LEN] = 3;
-        hmac(output, tau0, HASH_LEN, output, HASH_LEN + 1);
-        memcpy(tau3, output, HASH_LEN);
-    }
+    hmac(prev, prk, sizeof(prk), tmp, sizeof(info) + 1);
+    memcpy(tau1, prev, HASH_LEN);
 
-    // Wipe intermediates
-    crypto_zero(tau0, sizeof(tau0));
-    crypto_zero(output, sizeof(output));
+    // if (tau2) {
+    //     // tau2 := Hmac(tau0, tau1 || 0x2)
+    //     output[HASH_LEN] = 2;
+    //     hmac(output, tau0, HASH_LEN, output, HASH_LEN + 1);
+    //     memcpy(tau2, output, HASH_LEN);
+    // }
+
+    // if (tau3) {
+    //     // tau3 := Hmac(tau0, tau2 || 0x3)
+    //     output[HASH_LEN] = 3;
+    //     hmac(output, tau0, HASH_LEN, output, HASH_LEN + 1);
+    //     memcpy(tau3, output, HASH_LEN);
+    // }
+
+    // // Wipe intermediates
+    // crypto_zero(tau0, sizeof(tau0));
+    // crypto_zero(output, sizeof(output));
 }
 
 void
