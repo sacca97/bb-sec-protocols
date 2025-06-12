@@ -58,3 +58,4 @@ bin/
 lib/
 CMakeFiles/
 .vscode
+Makefile
