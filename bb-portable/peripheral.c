@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <getopt.h>
 #include <sys/socket.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/l2cap.h>
@@ -46,6 +47,33 @@ int main(int argc, char **argv)
     int server_socket, client_socket, bytes_read;
     socklen_t opt = sizeof(rem_addr);
     int err;
+    int dev_id = -1;
+    int c;
+
+    static struct option long_options[] = {
+        {"dev", required_argument, 0, 'd'},
+        {0, 0, 0, 0}};
+
+    while (1)
+    {
+        int option_index = 0;
+        c = getopt_long(argc, argv, "d:", long_options, &option_index);
+
+        if (c == -1)
+            break;
+
+        switch (c)
+        {
+        case 'd':
+            dev_id = atoi(optarg);
+            break;
+        case '?':
+            fprintf(stderr, "Usage: %s [--dev <device>]\n", argv[0]);
+            exit(1);
+        default:
+            break;
+        }
+    }
 
     err = system("bluetoothctl power on");
     if (err != 0)
@@ -81,8 +109,14 @@ int main(int argc, char **argv)
 
     /* bind socket to any local bluetooth adapter */
     loc_addr.l2_family = AF_BLUETOOTH;
-    // Use BDADDR_ANY to listen on all local adapters. This is more robust.
-    bacpy(&loc_addr.l2_bdaddr, BDADDR_ANY);
+    if (dev_id >= 0)
+    {
+        hci_devba(dev_id, &loc_addr.l2_bdaddr);
+    }
+    else
+    {
+        bacpy(&loc_addr.l2_bdaddr, BDADDR_ANY);
+    }
     loc_addr.l2_psm = htobs(L2CAP_SERVER_PORT_NUM);
 
     printf("Binding to PSM 0x%04X\n", L2CAP_SERVER_PORT_NUM);
