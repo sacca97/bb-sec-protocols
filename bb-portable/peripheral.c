@@ -29,104 +29,111 @@ static uint8_t remote_public_key[32] = {
 
 static bbstate state;
 
-void
-print_buf(void* buf, size_t buf_len)
+void print_buf(void *buf, size_t buf_len)
 {
-    uint8_t* bufr = (uint8_t*)buf;
-    for (int i = 0; i < buf_len; i++) {
+    uint8_t *bufr = (uint8_t *)buf;
+    for (int i = 0; i < buf_len; i++)
+    {
         printf("%02x", bufr[i]);
     }
     printf("\n");
 }
 
-int
-main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     struct sockaddr_l2 loc_addr = {0}, rem_addr = {0};
     uint8_t buffer[128] = {0};
     int server_socket, client_socket, bytes_read;
-    unsigned int opt = sizeof(rem_addr);
+    socklen_t opt = sizeof(rem_addr);
+    int err;
 
-    bdaddr_t local_bdaddr = {0}; // To store the hci1 address
-    int dev_id = 1;              // hci1 device ID (change to 1 for hci1)
+    err = system("bluetoothctl power on");
+    if (err != 0)
+    {
+        perror("Failed to turn on Bluetooth power. Make sure you have permissions.");
+        exit(1);
+    }
+
+    err = system("bluetoothctl discoverable on");
+    if (err != 0)
+    {
+        perror("Failed to make Bluetooth discoverable. Make sure you have permissions.");
+        exit(1);
+    }
+
+    err = system("bluetoothctl pairable on");
+    if (err != 0)
+    {
+        perror("Failed to make Bluetooth pairable. Make sure you have permissions.");
+        exit(1);
+    }
 
     printf("Start Bluetooth L2CAP server...\n");
-
-    /* Get the local Bluetooth address of hci1 */
-    int hci_sock = hci_open_dev(dev_id);
-    if (hci_sock < 0) {
-        perror("failed to open HCI device hci1");
-        exit(1);
-    }
-
-    if (hci_read_bd_addr(hci_sock, &local_bdaddr, 0) < 0) {
-        perror("failed to read local Bluetooth address for hci1");
-        close(hci_sock);
-        exit(1);
-    }
-
-    char local_addr_str[18];
-    ba2str(&local_bdaddr, local_addr_str);
-    printf("Using local HCI device: hci%d (%s)\n", dev_id, local_addr_str);
-
-    // uint16_t opcode = htobs(OGF_HOST_CTL | OCF_WRITE_SCAN_ENABLE); // OGF_HOST_CTL (3 << 10) | 0x1A
-    uint8_t param =
-        (SCAN_PAGE | SCAN_INQUIRY); // 0x03 for Inquiry and Page Scan
-
-    // Send the HCI command
-    // hci_send_cmd(dd, opcode, param_len, param_data)
-    if (hci_send_cmd(hci_sock, OGF_HOST_CTL, OCF_WRITE_SCAN_ENABLE, 1, &param) <
-        0) {
-        perror("Failed to send HCI_Write_Scan_Enable command");
-        return -1;
-    }
-    close(hci_sock);
+    printf("IMPORTANT: Make sure adapter is discoverable via 'bluetoothctl'\n");
 
     /* allocate socket */
     server_socket = socket(AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
-    if (server_socket < 0) {
+    if (server_socket < 0)
+    {
         perror("failed to create socket");
         exit(1);
     }
 
-    /* bind socket to the local bluetooth adapter (hci1) */
-    loc_addr.l2_family =
-        AF_BLUETOOTH; /* Addressing family, always AF_BLUETOOTH */
-    bacpy(&loc_addr.l2_bdaddr, &local_bdaddr); /* Bluetooth address of hci1 */
-    loc_addr.l2_psm = htobs(
-        L2CAP_SERVER_PORT_NUM); /* port number of local bluetooth adapter */
+    /* bind socket to any local bluetooth adapter */
+    loc_addr.l2_family = AF_BLUETOOTH;
+    // Use BDADDR_ANY to listen on all local adapters. This is more robust.
+    bacpy(&loc_addr.l2_bdaddr, BDADDR_ANY);
+    loc_addr.l2_psm = htobs(L2CAP_SERVER_PORT_NUM);
 
-    printf("binding\n");
-    if (bind(server_socket, (struct sockaddr*)&loc_addr, sizeof(loc_addr)) <
-        0) {
-        perror("failed to bind");
+    printf("Binding to PSM 0x%04X\n", L2CAP_SERVER_PORT_NUM);
+    if (bind(server_socket, (struct sockaddr *)&loc_addr, sizeof(loc_addr)) < 0)
+    {
+        perror("failed to bind. (Are you running with sudo?)");
         close(server_socket);
         exit(1);
     }
 
-    printf("listening\n");
-    /* put socket into listening mode */
-    listen(server_socket, 2);
-    /* accept one connection */
-    client_socket =
-        accept(server_socket, (struct sockaddr*)&rem_addr,
-               &opt); /* return new socket for connection with a client */
-    if (client_socket < 0) {
-        perror("accept");
-        close(server_socket);
-        return client_socket;
+    // Note: Security settings like BT_SECURITY might require a paired device
+    // for higher security levels. LOW is generally fine for initial connection.
+    int security_level = BT_SECURITY_LOW;
+    err = setsockopt(server_socket, SOL_BLUETOOTH, BT_SECURITY, &security_level, sizeof(security_level));
+    if (err != 0)
+    {
+        perror("setsockopt(BT_SECURITY) failed");
+        // This might not be a fatal error, so we can choose to continue
     }
-    char buf[18];
-    ba2str(&rem_addr.l2_bdaddr, buf);
-    printf("connected from %s\n", buf);
 
+    printf("Listening...\n");
+    /* put socket into listening mode */
+    if (listen(server_socket, 1) < 0)
+    {
+        perror("listen failed");
+        close(server_socket);
+        exit(1);
+    }
+
+    /* accept one connection */
+    client_socket = accept(server_socket, (struct sockaddr *)&rem_addr, &opt);
+    if (client_socket < 0)
+    {
+        perror("accept failed");
+        close(server_socket);
+        exit(1);
+    }
+
+    char rem_addr_str[18];
+    ba2str(&rem_addr.l2_bdaddr, rem_addr_str);
+    printf("Accepted connection from %s\n", rem_addr_str);
+
+    // ... (The rest of your handshake logic is likely fine) ...
     bbstate_init(&state, BB_ROLE_PERIPHERAL, public_key, private_key,
                  remote_public_key, NULL);
 
     /* read data from the client */
     bytes_read =
         recv(client_socket, buffer, sizeof(struct bb_session_start_req), 0);
-    if (bytes_read <= 0) {
+    if (bytes_read <= 0)
+    {
         perror("Error handshake initiation\n");
         close(client_socket);
         close(server_socket);
@@ -142,7 +149,8 @@ main(int argc, char** argv)
     // Send response
     int rc =
         send(client_socket, buffer, sizeof(struct bb_session_start_req), 0);
-    if (rc <= 0) {
+    if (rc <= 0)
+    {
         perror("Error sending");
         close(client_socket);
         close(server_socket);
@@ -156,11 +164,16 @@ main(int argc, char** argv)
     aead_encrypt and aead_decrypt (needs a counter as nonce)
 
     send and recv
-    
+
     */
 
     /* close connection */
     close(client_socket);
     close(server_socket);
+
+    system("bluetoothctl default-agent");
+    system("hciconfig hci0 auth");
+
+    printf("Server finished.\n");
     return 0;
 }

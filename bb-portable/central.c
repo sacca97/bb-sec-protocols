@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
+#include <getopt.h>
 #include <sys/socket.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/l2cap.h>
@@ -9,8 +11,6 @@
 #include <bluetooth/hci_lib.h>
 // #include "bluetooth/hci_lib.h"
 
-#define L2CAP_SERVER_BLUETOOTH_ADDR                                            \
-    "00:E0:4C:23:99:87" // Replace with your server's Bluetooth address
 #define L2CAP_SERVER_PORT_NUM 0x0235
 
 static uint8_t private_key[32] = {
@@ -28,90 +28,138 @@ static uint8_t remote_public_key[32] = {
 
 static bbstate state;
 
-void
-print_buf(void* buf, size_t buf_len)
+void print_buf(void *buf, size_t buf_len)
 {
-    uint8_t* bufr = (uint8_t*)buf;
-    for (int i = 0; i < buf_len; i++) {
+    uint8_t *bufr = (uint8_t *)buf;
+    for (int i = 0; i < buf_len; i++)
+    {
         printf("%02x", bufr[i]);
     }
     printf("\n");
 }
 
-int
-main(int argc, char** argv)
+int main(int argc, char **argv)
 {
+    struct sockaddr_l2 loc_addr = {0};
+    struct sockaddr_l2 rem_addr = {0};
+    int sock, status;
     uint8_t buffer[128];
-    struct sockaddr_l2 addr = {0};
-    int sock;
-    const char* sample_text = "L2CAP Simple";
-    bdaddr_t local_bdaddr = {0}; // To store the hci0 address
-    int dev_id = 0;              // hci0 device ID
+    char dest_addr_str[18] = {0};
+    int dev_id = -1;
+    int c;
 
-    printf("Start Bluetooth L2CAP client, server addr %s\n",
-           L2CAP_SERVER_BLUETOOTH_ADDR);
+    static struct option long_options[] = {
+        {"dev", required_argument, 0, 'd'},
+        {0, 0, 0, 0}};
 
-    int hci_sock = hci_open_dev(dev_id);
-    if (hci_sock < 0) {
-        perror("failed to open HCI device");
-        exit(1);
+    while (1)
+    {
+        int option_index = 0;
+        c = getopt_long(argc, argv, "d:", long_options, &option_index);
+
+        if (c == -1)
+            break;
+
+        switch (c)
+        {
+        case 'd':
+            dev_id = atoi(optarg);
+            break;
+        case '?':
+            break;
+        default:
+            if (optind <= argc)
+            {
+                strncpy(dest_addr_str, argv[optind - 1], 17);
+                dest_addr_str[17] = '\0';
+            }
+        }
     }
 
-    if (hci_read_bd_addr(hci_sock, &local_bdaddr, 0) < 0) {
-        perror("failed to read local Bluetooth address");
-        close(hci_sock);
-        exit(1);
+    if (dest_addr_str[0] == 0)
+    {
+        if (optind < argc)
+        {
+            strncpy(dest_addr_str, argv[optind], 17);
+            dest_addr_str[17] = '\0';
+        }
+        else
+        {
+            fprintf(stderr, "Usage: %s <Bluetooth Address> [--dev <device>]\n", argv[0]);
+            exit(1);
+        }
     }
-    close(hci_sock);
 
-    char local_addr_str[18];
-    ba2str(&local_bdaddr, local_addr_str);
-    printf("Using local HCI device: hci%d (%s)\n", dev_id, local_addr_str);
+    printf("Starting Bluetooth L2CAP client...\n");
 
     /* allocate a socket */
     sock = socket(AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP);
-    if (sock < 0) {
+    if (sock < 0)
+    {
         perror("failed to create socket");
         exit(1);
     }
 
-    /* Set the local address for the client socket (hci0's address) */
-    struct sockaddr_l2 local_addr = {0};
-    local_addr.l2_family = AF_BLUETOOTH;
-    bacpy(&local_addr.l2_bdaddr, &local_bdaddr); // Set to hci0's address
+    /* bind socket to a specific local adapter */
+    if (dev_id >= 0)
+    {
+        loc_addr.l2_family = AF_BLUETOOTH;
+        hci_devba(dev_id, &loc_addr.l2_bdaddr);
 
-    if (bind(sock, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
-        perror("failed to bind local socket");
-        close(sock);
+        if (bind(sock, (struct sockaddr *)&loc_addr, sizeof(loc_addr)) < 0)
+        {
+            perror("failed to bind socket");
+            close(sock);
+            exit(1);
+        }
+    }
+
+    /* set the connection parameters (who to connect to) */
+    rem_addr.l2_family = AF_BLUETOOTH;
+    rem_addr.l2_psm = htobs(L2CAP_SERVER_PORT_NUM);
+    if (str2ba(dest_addr_str, &rem_addr.l2_bdaddr) < 0)
+    {
+        perror("str2ba failed to parse address");
         exit(1);
     }
 
-    /* set the outgoing connection parameters, server's address and port number */
-    addr.l2_family = AF_BLUETOOTH; /* Addressing family, always AF_BLUETOOTH */
-    addr.l2_psm = htobs(L2CAP_SERVER_PORT_NUM); /* server's port number */
-    str2ba(L2CAP_SERVER_BLUETOOTH_ADDR,
-           &addr.l2_bdaddr); /* server's Bluetooth Address */
+    int security_level = BT_SECURITY_LOW;
+    int err = setsockopt(sock, SOL_BLUETOOTH, BT_SECURITY, &security_level, sizeof(security_level));
+    if (err != 0)
+    {
+        perror("setsockopt(BT_SECURITY) failed");
+    }
+
+    printf("Connecting to %s on PSM 0x%04X...\n", dest_addr_str, L2CAP_SERVER_PORT_NUM);
 
     /* connect to server */
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("failed to connect");
+    // The connect() call handles everything: creating the ACL link
+    // and establishing the L2CAP channel. No hci_* calls or client-side
+    // bind() are necessary.
+    status = connect(sock, (struct sockaddr *)&rem_addr, sizeof(rem_addr));
+    if (status < 0)
+    {
+        perror("failed to connect. (Is server running and discoverable? Are you using sudo?)");
         close(sock);
         exit(1);
     }
 
-    printf("connected...\n");
+    printf("Connected successfully!\n");
+
     bbstate_init(&state, BB_ROLE_CENTRAL, public_key, private_key,
                  remote_public_key, NULL);
     bb_session_start_req(&state, buffer);
 
     /* send data to server */
-    if (send(sock, buffer, sizeof(struct bb_session_start_req), 0) <= 0) {
+    if (send(sock, buffer, sizeof(struct bb_session_start_req), 0) <= 0)
+    {
         perror("failed to send data");
         close(sock);
         exit(1);
     }
 
-    if (recv(sock, buffer, sizeof(struct bb_session_start_req), 0) <= 0) {
+    if (recv(sock, buffer, sizeof(struct bb_session_start_req), 0) <= 0)
+    {
         perror("failed to receive data");
         close(sock);
         exit(1);
@@ -125,9 +173,10 @@ main(int argc, char** argv)
     aead_encrypt and aead_decrypt (needs a counter as nonce)
 
     send and recv
-    
+
     */
 
     close(sock);
+    printf("Client finished.\n");
     return 0;
 }
